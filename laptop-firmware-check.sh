@@ -1,80 +1,97 @@
 #!/bin/bash
 
-echo "=============================="
-echo " 🔧 Firmware och enhetscheck "
-echo "=============================="
+# ============================
+# Laptop Firmware & Enhetskontroll för Arch Linux
+# ============================
 
-# 1. fwupd - Firmware updater
-echo ">> Installerar och kör fwupd..."
-pacman -Sy --noconfirm fwupd
+# --- Färginställningar ---
+RED="\033[0;31m"
+GREEN="\033[0;32m"
+YELLOW="\033[1;33m"
+BLUE="\033[1;34m"
+NC="\033[0m" # No Color
+
+# --- Kontrollera sudo ---
+if [[ $EUID -ne 0 ]]; then
+   echo -e "${RED}Detta skript kräver root. Starta med: sudo $0${NC}"
+   exit 1
+fi
+
+echo -e "${BLUE}=========================================="
+echo -e " 🔧 Laptop Firmware och Enhetskontroll "
+echo -e "==========================================${NC}"
+
+# Funktion för att visa steg
+show_step() {
+  echo -e "\n${YELLOW}>> $1${NC}"
+}
+
+# --- Steg 1: fwupd ---
+show_step "Installerar och uppdaterar firmware med fwupd..."
+pacman -Sy --noconfirm fwupd &>/dev/null
 systemctl enable --now fwupd.service
 fwupdmgr refresh
 fwupdmgr get-updates
 fwupdmgr update
 
-# 2. Fingeravtrycksstöd
-echo ">> Installerar fingeravtrycksstöd..."
-pacman -Sy --noconfirm fprintd libfprint
+# --- Steg 2: Fingeravtrycksstöd ---
+show_step "Installerar stöd för fingeravtrycksläsare..."
+pacman -Sy --noconfirm fprintd libfprint &>/dev/null
 
-# 3. Bluetooth
-echo ">> Installerar och startar Bluetooth..."
-pacman -Sy --noconfirm bluez bluez-utils
+# --- Steg 3: Bluetooth ---
+show_step "Installerar och startar Bluetooth..."
+pacman -Sy --noconfirm bluez bluez-utils &>/dev/null
 systemctl enable --now bluetooth.service
 
-# 4. Kamera – testverktyg
-echo ">> Installerar verktyg för kamera..."
-pacman -Sy --noconfirm cheese v4l-utils
+# --- Steg 4: Kamera ---
+show_step "Installerar kamera-verktyg..."
+pacman -Sy --noconfirm cheese v4l-utils &>/dev/null
 
-# 5. Installera hårdvaruidentifiering
-echo ">> Installerar verktyg för systeminformation..."
-pacman -Sy --noconfirm usbutils pciutils dmidecode lshw
+# --- Steg 5: Systeminfoverktyg ---
+show_step "Installerar verktyg för hårdvaruidentifiering..."
+pacman -Sy --noconfirm usbutils pciutils dmidecode lshw &>/dev/null
 
-# 6. BIOS-version
+# --- Steg 6: BIOS-version ---
+show_step "BIOS-version:"
 BIOS_VER=$(dmidecode -s bios-version)
-echo ">> Nuvarande BIOS-version: $BIOS_VER"
+echo -e "${GREEN}  Nuvarande BIOS-version: $BIOS_VER${NC}"
 
-# 7. Lista enheter
-echo ">> USB-enheter:"
+# --- Steg 7: Visa enheter ---
+show_step "USB-enheter:"
 lsusb
 
-echo ""
-echo ">> PCI-enheter:"
+show_step "PCI-enheter:"
 lspci
 
-echo ""
-echo ">> Fingeravtrycksläsare:"
-fprintd-list $(logname) 2>/dev/null || echo "Inga fingeravtryck registrerade"
+# --- Steg 8: Fingeravtryck ---
+show_step "Registrerade fingeravtryck:"
+fprintd-list $(logname) 2>/dev/null || echo "  Inga fingeravtryck registrerade."
 
-# 8. Kontrollera kamera
-echo ""
-echo ">> V4L2 kameracheck:"
-v4l2-ctl --list-devices || echo "Kamera hittades inte"
+# --- Steg 9: Kameracheck ---
+show_step "Kameraenheter:"
+v4l2-ctl --list-devices || echo "  Ingen kamera hittades."
 
-# 9. Bluetooth-status
-echo ""
-echo ">> Bluetooth-status:"
+# --- Steg 10: Bluetooth-status ---
+show_step "Bluetooth-information:"
 bluetoothctl show
 
-# 10. Dmesg firmware-koll
-echo ""
-echo ">> Letar efter firmware-problem i dmesg:"
+# --- Steg 11: Firmwareproblem (logg) ---
+show_step "Firmware-relaterade rader från dmesg:"
 dmesg | grep -i firmware | tail -n 10
 
-# 11. Firmwarecheck från hw-probe (valfri)
-if command -v hw-probe &> /dev/null; then
-    echo ""
-    echo ">> Kör hw-probe för hårdvarudata (om installerat)..."
+# --- Steg 12: hw-probe (valfritt) ---
+if ! command -v hw-probe &> /dev/null; then
+  echo -e "\n${BLUE}Vill du installera hw-probe (från AUR med yay) för att analysera hårdvarustöd?${NC}"
+  read -p "Installera hw-probe? (j/n): " install_probe
+  if [[ $install_probe == "j" ]]; then
+    yay -S --noconfirm hw-probe
     hw-probe -all -upload
+  fi
 else
-    echo ""
-    echo ">> Vill du installera hw-probe (för att ladda upp hårdvarudata och se supportstatus online)?"
-    read -p "Installera hw-probe från AUR via yay? (j/n): " choice
-    if [[ $choice == "j" ]]; then
-        yay -S hw-probe
-        hw-probe -all -upload
-    fi
+  show_step "Kör hw-probe..."
+  hw-probe -all -upload
 fi
 
-echo ""
-echo "✅ Färdig! Starta om datorn om firmware har uppdaterats."
-
+# --- Avslutning ---
+echo -e "\n${GREEN}✅ Klart! Starta om datorn för BIOS/firmware uppdateringar."
+echo -e "Kontrollera gärna resultat i appar som Cheese (kamera), Bluetooth-menyn, eller med fprintd-enroll (fingeravtryck).${NC}"
